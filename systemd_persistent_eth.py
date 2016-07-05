@@ -182,7 +182,7 @@ def parse_config(string_input):
     for line in string_input.split('\n'):
         split_line = line.split('=')
         if len(split_line) > 1:
-            config_dict[split_line[0].upper().strip()] = split_line[1].upper().strip()
+            config_dict[split_line[0].upper().strip()] = split_line[1].upper().strip().strip('"')
 
     return config_dict
 
