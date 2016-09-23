@@ -19,13 +19,18 @@
 #    within udev is exceptionally weak.
 #    
 #    This script avoids the failures of the above udev side by simply, pre-
-#    network.target, renaming all interfaces on the system to a non-ethN
+#    network-online.target, renaming all interfaces on the system to a non-ethN
 #    naming convention, and then applies names based off of the contents of 
 #    the ifcfg-ethN configuration files.
 # 
 #  Author: Kyle Walker <kwalker@redhat.com>
 #
 #  ChangeLog:
+#   * Wed Sep 21 - Frank Hirtz <frankh@redhat.com>
+#       - Change systemd target to accomodate hosts which aren't running 
+#         NetworkManager
+#       - Fix filter so we don't pull in infiniband interfaces
+#       - Fix VLAN detection (Add look for '.' as a valid name)
 #   * Wed Jul 4 - Kyle Walker <kwalker@redhat.com>
 #     Initial release
 #
@@ -42,29 +47,29 @@
 
 from __future__ import print_function
 
-import os, sys, shutil, pdb
+import os, sys, shutil, pdb, re
 import argparse
 from subprocess import Popen, PIPE
 from glob import glob
 
-version = '0.1'
+version = '0.2'
 
 INSTALL = """
 [Unit]
 Description=Persistently name interfaces to the ethN naming convention
-Before=network.target
+Before=network-online.target
 
 [Service]
 Type=oneshot
 ExecStart=/usr/sbin/systemd_persistent_eth.py
 
 [Install]
-WantedBy=network.target
+WantedBy=network-online.target
 ;Alias=ethN.service
 """
 
 parser = argparse.ArgumentParser(description='Allows network interfaces to be renamed based on the desired configuration in the ifcfg files.')
-parser.add_argument('-i', '--install', action='store_true', help='Installs the script as a systemd unit that will execute prior to the network.target.')
+parser.add_argument('-i', '--install', action='store_true', help='Installs the script as a systemd unit that will execute prior to the network-online.target.')
 args = parser.parse_args()
 
 def install():
@@ -140,6 +145,10 @@ def get_interface_dict():
                 print("%15s: %s%s" %(interface, hwaddr, '' if not connection else ' - UP'))
                 interfaces[interface] = hwaddr,connection,interface
 
+        for key, value in interfaces.copy().iteritems(): # Filter out infiniband interfaces
+                if key.startswith('ib'):
+                        interfaces.pop(key, None)
+
     return interfaces
 
 def link_name_change(idx, entry, dest=None):
@@ -167,9 +176,10 @@ def get_config_files():
     filelist = glob('/etc/sysconfig/network-scripts/ifcfg-eth*')
     
     for entry in filelist:
+        if '.' in entry:
+            continue            #VLAN file, disregard
         if ':' in entry:
             continue            #VLAN file, disregard
-
         f = open(entry, 'r')
         files[entry] = f.read()
         f.close()
