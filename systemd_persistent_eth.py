@@ -58,6 +58,7 @@ INSTALL = """
 [Unit]
 Description=Persistently name interfaces to the ethN naming convention
 Before=network-online.target
+Before=network.service
 
 [Service]
 Type=oneshot
